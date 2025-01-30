@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
-from starlette.concurrency import run_in_threadpool
 
 from app.api.schemas import SearchRequest, QueryResponse
 from app.api.routes_chat import get_rag_system
@@ -17,10 +16,9 @@ router = APIRouter()
 async def search_products(request_body: SearchRequest, request: Request) -> QueryResponse:
     try:
         rag = get_rag_system(request)
-        return await run_in_threadpool(
-            rag.search_products,
+        return rag.search_products(
             request_body.query,
-            request_body.max_sources,
+            max_sources=request_body.max_sources,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
-from starlette.concurrency import run_in_threadpool
 
 from app.api.schemas import ClearMemoryRequest, ClearMemoryResponse, QueryRequest, QueryResponse
 from app.rag.pipeline import RAGSystem
@@ -21,11 +20,10 @@ def get_rag_system(request: Request) -> RAGSystem:
 async def query_products(request_body: QueryRequest, request: Request) -> QueryResponse:
     try:
         rag = get_rag_system(request)
-        return await run_in_threadpool(
-            rag.query_products,
+        return rag.query_products(
             request_body.question,
-            request_body.session_id,
-            request_body.max_sources,
+            session_id=request_body.session_id,
+            max_sources=request_body.max_sources,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -38,7 +36,7 @@ async def query_products(request_body: QueryRequest, request: Request) -> QueryR
 async def clear_memory(request_body: ClearMemoryRequest, request: Request) -> ClearMemoryResponse:
     try:
         rag = get_rag_system(request)
-        await run_in_threadpool(rag.clear_memory, request_body.session_id)
+        rag.clear_memory(request_body.session_id)
         return ClearMemoryResponse(
             message="Memory cleared successfully",
             session_id=request_body.session_id,

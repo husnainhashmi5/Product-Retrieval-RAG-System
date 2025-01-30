@@ -1,4 +1,6 @@
-from fastapi.testclient import TestClient
+import asyncio
+
+import httpx
 
 from app.core.config import Settings
 from app.ingestion.normalizer import ProductRecord
@@ -23,7 +25,7 @@ def make_product(product_id, name, brand, model, price, category, color, status=
     )
 
 
-def make_client():
+def make_app():
     settings = Settings(
         groq_api_key="test",
         pinecone_api_key="test",
@@ -39,16 +41,27 @@ def make_client():
             make_product("p3", "Premium Microwave", "Haier", "HMW-99", 90000, "microwave", "Black"),
         ],
     )
-    return TestClient(create_app(settings=settings, rag_system=rag))
+    return create_app(settings=settings, rag_system=rag)
+
+
+async def post_json(app, path, payload):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.post(path, json=payload)
+
+
+def run(coro):
+    return asyncio.run(coro)
 
 
 def test_query_returns_structured_products_and_filters():
-    client = make_client()
+    app = make_app()
 
-    response = client.post(
+    response = run(post_json(
+        app,
         "/query",
-        json={"question": "show microwaves under Rs 50,000", "session_id": "s1"},
-    )
+        {"question": "show microwaves under Rs 50,000", "session_id": "s1"},
+    ))
 
     assert response.status_code == 200
     payload = response.json()
@@ -59,40 +72,57 @@ def test_query_returns_structured_products_and_filters():
 
 
 def test_search_route_uses_existing_product_search_method():
-    client = make_client()
+    app = make_app()
 
-    response = client.post("/search", json={"query": "HMW-20"})
+    response = run(post_json(app, "/search", {"query": "HMW-20"}))
 
     assert response.status_code == 200
     assert response.json()["products"][0]["model"] == "HMW-20"
 
 
-def test_clear_memory_requires_body_session_id_and_clears_only_that_session():
-    client = make_client()
-    client.post("/query", json={"question": "show microwaves", "session_id": "a"})
-    client.post("/query", json={"question": "show microwaves", "session_id": "b"})
+async def clear_memory_scenario():
+    app = make_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post("/query", json={"question": "show microwaves", "session_id": "a"})
+        await client.post("/query", json={"question": "show microwaves", "session_id": "b"})
+        response = await client.post("/clear_memory", json={"session_id": "a"})
 
-    response = client.post("/clear_memory", json={"session_id": "a"})
+    store = app.state.rag.session_store
+    return (
+        response,
+        store.get_context("a").previous_result_ids,
+        store.get_context("b").previous_result_ids,
+    )
+
+
+def test_clear_memory_requires_body_session_id_and_clears_only_that_session():
+    response, first_session_results, second_session_results = run(clear_memory_scenario())
 
     assert response.status_code == 200
-    store = client.app.state.rag.session_store
-    assert store.get_context("a").previous_result_ids == []
-    assert store.get_context("b").previous_result_ids == ["p1", "p3"]
+    assert first_session_results == []
+    assert second_session_results == ["p1", "p3"]
 
 
 def test_clear_memory_rejects_missing_session_id():
-    client = make_client()
+    app = make_app()
 
-    response = client.post("/clear_memory", json={})
+    response = run(post_json(app, "/clear_memory", {}))
 
     assert response.status_code == 422
 
 
-def test_empty_result_and_invalid_request_handling():
-    client = make_client()
+async def empty_result_scenario():
+    app = make_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        empty = await client.post("/query", json={"question": "Samsung phones under Rs 100", "session_id": "s1"})
+        invalid = await client.post("/query", json={"question": "", "session_id": "s1"})
+    return empty, invalid
 
-    empty = client.post("/query", json={"question": "Samsung phones under Rs 100", "session_id": "s1"})
-    invalid = client.post("/query", json={"question": "", "session_id": "s1"})
+
+def test_empty_result_and_invalid_request_handling():
+    empty, invalid = run(empty_result_scenario())
 
     assert empty.status_code == 200
     assert empty.json()["products"] == []

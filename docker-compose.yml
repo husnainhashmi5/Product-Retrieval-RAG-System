@@ -1,4 +1,38 @@
-version: '3'
 services:
-  app:
-    build: .
+  api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PRODUCT_CSV_PATH: backend/data/products.csv
+      REDIS_URL: redis://redis:6379/0
+      FRONTEND_URL: http://localhost:5173
+      REQUIRE_EXTERNAL_SERVICES: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

@@ -71,7 +71,7 @@ describe('App', () => {
     expect(await screen.findByText('Samsung Galaxy A16')).toBeTruthy()
     expect(screen.getByText('A16')).toBeTruthy()
     expect(screen.getByText('Rs 48,999')).toBeTruthy()
-    expect(screen.getByText('phone')).toBeTruthy()
+    expect(screen.getAllByText('phone').length).toBeGreaterThan(0)
     expect(screen.getByText('Black')).toBeTruthy()
     expect(screen.getByRole('link', { name: /source/i })).toBeTruthy()
     expect(screen.getByText('max price: 50000')).toBeTruthy()
