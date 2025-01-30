@@ -1,0 +1,1 @@
+"""Session-specific conversation state."""

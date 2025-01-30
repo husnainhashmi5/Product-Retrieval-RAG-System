@@ -1,0 +1,12 @@
+fastapi==0.116.1
+langchain==0.3.27
+langchain_community==0.3.27
+langchain_google_genai==2.1.9
+langchain_pinecone==0.2.11
+pinecone==7.3.0
+pydantic==2.11.7
+python-dotenv==1.1.1
+starlette==0.47.2
+uvicorn==0.35.0
+httpx==0.28.1
+pytest==9.0.2
